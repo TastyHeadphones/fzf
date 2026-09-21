@@ -379,6 +379,47 @@ func incompleteEscape(buffer []byte) bool {
 	return false
 }
 
+
+// parseKittyKey parses a Kitty keyboard-protocol CSI sequence ending in 'u'.
+// Format: ESC [ codepoint ; modifiers u
+// Modifiers are encoded as 1 + shift + 2*alt + 4*ctrl (+ ...).
+// Currently only shift-space (32;2) is mapped; other chords return false so
+// the existing CSI parser can try.
+func parseKittyKey(buf []byte) (Event, int, bool) {
+	if len(buf) < 4 || buf[0] != Esc.Byte() || buf[1] != '[' {
+		return Event{}, 0, false
+	}
+	end := bytes.IndexByte(buf[2:], 'u')
+	if end < 0 {
+		return Event{}, 0, false
+	}
+	end += 2 // absolute index of 'u'
+	body := string(buf[2:end])
+	// Reject if any non-digit/semicolon (keeps us out of mouse/SGR CSI)
+	for i := 0; i < len(body); i++ {
+		c := body[i]
+		if !(c == ';' || (c >= '0' && c <= '9')) {
+			return Event{}, 0, false
+		}
+	}
+	parts := strings.Split(body, ";")
+	if len(parts) < 1 || parts[0] == "" {
+		return Event{}, 0, false
+	}
+	codepoint := atoi(parts[0], -1)
+	mods := 1
+	if len(parts) > 1 && parts[1] != "" {
+		mods = atoi(parts[1], 1)
+	}
+	shift := (mods-1)&1 != 0
+	alt := (mods-1)&2 != 0
+	ctrl := (mods-1)&4 != 0
+	if codepoint == 32 && shift && !alt && !ctrl {
+		return Event{ShiftSpace, 0, nil}, end + 1, true
+	}
+	return Event{}, 0, false
+}
+
 func (r *LightRenderer) getBytes(cancellable bool) ([]byte, getCharResult, error) {
 	return r.getBytesInternal(cancellable, r.buffer, false)
 }
@@ -562,6 +603,13 @@ func (r *LightRenderer) escSequence(sz *int) Event {
 	case '[', 'O':
 		if len(r.buffer) < 3 {
 			return Event{Invalid, 0, nil}
+		}
+		// Kitty keyboard protocol: CSI codepoint;modifiers u (e.g. shift-space = CSI 32;2u)
+		if r.buffer[1] == '[' {
+			if ev, n, ok := parseKittyKey(r.buffer); ok {
+				*sz = n
+				return ev
+			}
 		}
 		*sz = 3
 		switch r.buffer[2] {

@@ -602,3 +602,13 @@ func TestMaskActionContents(t *testing.T) {
 		t.Errorf("Not masked: %s", masked)
 	}
 }
+
+func TestParseShiftSpace(t *testing.T) {
+	pairs, _, err := parseKeyChords("shift-space", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pairs[tui.ShiftSpace.AsEvent()] != "shift-space" {
+		t.Fatalf("got %v", pairs)
+	}
+}

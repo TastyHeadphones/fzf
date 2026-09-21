@@ -51,3 +51,26 @@ func TestIncompleteEscape(t *testing.T) {
 		}
 	}
 }
+
+func TestParseKittyKeyShiftSpace(t *testing.T) {
+	ev, n, ok := parseKittyKey([]byte("\x1b[32;2u"))
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	if ev.Type != ShiftSpace {
+		t.Fatalf("got %v", ev.Type)
+	}
+	if n != 7 {
+		t.Fatalf("size %d", n)
+	}
+	// plain space should not map
+	_, _, ok = parseKittyKey([]byte("\x1b[32;1u"))
+	if ok {
+		t.Fatal("plain space should be left to other parsers")
+	}
+	// incomplete / non-u
+	_, _, ok = parseKittyKey([]byte("\x1b[32;2~"))
+	if ok {
+		t.Fatal("tilde CSI should not match")
+	}
+}
